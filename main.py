@@ -91,9 +91,15 @@ class GameBoard(tkinter.Canvas):
         """
         :param window: ウィンドウオブジェクトの名前(主にrootが入る)
         """
+        self.window = window
         tkinter.Canvas.__init__(self, window)
         self.init_game_board()
-        self.draw_mino()
+        self.timer_stop: bool = False
+        self.time_interval: float = 0.1
+        self.my_timer()
+        window.protocol('WM_DELETE_WINDOW', self.window_close)
+        self.focus_set()
+        self.bind('<Key>', self.on_key_down)
 
     def init_game_board(self):
         """
@@ -109,6 +115,9 @@ class GameBoard(tkinter.Canvas):
         for number in range(BoardSize.HEIGHT):
             board_row: list = [0] * BoardSize.WIDTH
             self.board.append(board_row)
+        self.pre_board = copy.deepcopy(self.board)
+        [self.is_cur_mino, self.key_allowed, self.is_key_down, self.key_slip_by] = [False] * 4
+
 
     def set_mino(self, set_board, mino_coords, x, y, mino_shape):
         for i in range(4):
@@ -116,34 +125,100 @@ class GameBoard(tkinter.Canvas):
             piece_x = mino_coords[i][0] + x
             set_board[piece_y][piece_x] = mino_shape
 
-    def draw_mino(self):
+    def draw_mino(self, copy_board, mino_coords, x, y, mino_shape):
+        self.set_mino(copy_board, mino_coords, x, y, mino_shape)
+        self.board = copy.deepcopy(copy_board)
+        self.cur_mino_cords = copy.deepcopy(mino_coords)
+        [self.cur_mino, self.cur_x, self.cur_y] = [mino_shape, x, y]
+        try:
+            self.paint()
+        except:
+            pass
+
+    def check_movable(self, check_board, mino_coords, x, y):
+        for i in range(4):
+            piece_y = mino_coords[i][1] + y
+            piece_x = mino_coords[i][0] + x
+            if piece_y < 0 or BoardSize.HEIGHT - 1 < piece_y or \
+                piece_x < 0 or BoardSize.WIDTH - 1 < piece_x or \
+                check_board[piece_y][piece_x] != 0:
+                return False
+        return True
+
+    def on_key_down(self, event):
+        self.key_code = event.keysym
+        if (self.key_allowed is False) or (self.is_key_down is True):
+            self.key_slip_by = True
+        else:
+            self.on_key_down_do()
+
+    def on_key_down_do(self):
+        self.is_key_down = True
+        if self.key_code == 'Left' or self.key_code == 'Right':
+            copy_board = copy.deepcopy(self.board)
+            self.set_mino(copy_board, self.cur_mino_cords, self.cur_x, self.cur_y, 0)
+            next_mino_coords = copy.deepcopy(self.cur_mino_cords)
+            [next_x, next_y] = [self.cur_x, self.cur_y]
+            if self.key_code == 'Left':
+                next_x = self.cur_x - 1
+            elif self.key_code == 'Right':
+                next_x = self.cur_x + 1
+            if
+
+    def on_timer(self):
+        copy_board = copy.deepcopy(self.board)
+        if not self.is_cur_mino:
+            new_mino = random.randint(1, 7)
+            new_mino_coords = copy.deepcopy(self.mino_table[new_mino])
+            [new_x, new_y] = [int(BoardSize.WIDTH / 2), 1]
+            if not self.check_movable(copy_board, new_mino_coords, new_x, new_y):
+                self.timer_stop = True
+            else:
+                self.draw_mino(copy_board, new_mino_coords, new_x, new_y, new_mino)
+                self.is_cur_mino = True
+        else:
+            self.set_mino(copy_board, self.cur_mino_cords, self.cur_x, self.cur_y, 0)
+            if not self.check_movable(copy_board, self.cur_mino_cords, self.cur_x, self.cur_y + 1):
+                self.is_cur_mino = False
+            else:
+                self.draw_mino(copy_board, self.cur_mino_cords, self.cur_x, self.cur_y + 1, self.cur_mino)
+
+    def paint(self):
         """
         図形を描画
         """
         [x0, y0] = [2, 2]
         peace_size = BoardSize.PIECE - 1
-        self.set_mino(self.board, self.mino_table[1], 5, 4, 1)
-        self.set_mino(self.board, self.mino_table[2], 1, 10, 2)
-        self.set_mino(self.board, self.mino_table[3], 4, 10, 3)
-        self.set_mino(self.board, self.mino_table[4], 7, 10, 4)
-        self.set_mino(self.board, self.mino_table[5], 1, 16, 5)
-        self.set_mino(self.board, self.mino_table[6], 5, 16, 6)
-        self.set_mino(self.board, self.mino_table[7], 7, 16, 7)
-
         for row in range(BoardSize.HEIGHT):
             for column in range(BoardSize.WIDTH):
-                shape: int = self.board[row][column]
+                self.pre_mino = self.pre_board[row][column]
+                mino: int = self.board[row][column]
                 tag_name = 'piece_' + str(row) + '_' + str(column)
 
-                if shape != 0:
+                if mino != self.pre_mino:
+                    if self.pre_mino != 0:
+                        self.delete(tag_name)
+                if mino != 0:
                     [xs, ys] = [x0 + column * BoardSize.PIECE, y0 + row * BoardSize.PIECE]
                     [xe, ye] = [xs + peace_size, ys + peace_size]
-                    self.create_rectangle(xs + 1, ys + 1, xe, ye, fill=self.colors[shape],
-                                          outline=self.dark[shape], width='2', tags=tag_name)
-                    self.create_line(xs, ys + 1, xe - 1, ys + 1, fill=self.light[shape],
+                    self.create_rectangle(xs + 1, ys + 1, xe, ye, fill=self.colors[mino],
+                                          outline=self.dark[mino], width='2', tags=tag_name)
+                    self.create_line(xs, ys + 1, xe - 1, ys + 1, fill=self.light[mino],
                                      width='2', tags=tag_name)
-                    self.create_line(xs+1, ys, xs + 1, ye + 1, fill=self.light[shape],
+                    self.create_line(xs+1, ys, xs + 1, ye + 1, fill=self.light[mino],
                                      width='2', tags=tag_name)
+        self.pre_board = copy.deepcopy(self.board)
+
+    def my_timer(self):
+        if not self.timer_stop:
+            self.on_timer()
+            self.timer_thread = threading.Timer(self.time_interval, self.my_timer)
+            self.timer_thread.daemon = True
+            self.timer_thread.start()
+
+    def window_close(self):
+        self.timer_stop = True
+        self.window.destroy()
 
 
 class TetrisGame:
@@ -178,3 +253,4 @@ root.title('Tetris')
 root.resizable(False, False)
 tetris_game = TetrisGame(root)
 root.mainloop()
+
