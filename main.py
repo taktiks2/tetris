@@ -95,7 +95,7 @@ class GameBoard(tkinter.Canvas):
         tkinter.Canvas.__init__(self, window)
         self.init_game_board()
         self.timer_stop: bool = False
-        self.time_interval: float = 0.1
+        self.time_interval: float = 0.2
         self.my_timer()
         window.protocol('WM_DELETE_WINDOW', self.window_close)
         self.focus_set()
@@ -145,6 +145,13 @@ class GameBoard(tkinter.Canvas):
                 return False
         return True
 
+    def check_del_line(self, check_board):
+        del_line_numb = BoardSize.HEIGHT
+        for i in range(BoardSize.HEIGHT):
+            if not (0 in check_board[i]):
+                del_line_numb = i
+        return del_line_numb
+
     def on_key_down(self, event):
         self.key_code = event.keysym
         if (self.key_allowed is False) or (self.is_key_down is True):
@@ -154,7 +161,9 @@ class GameBoard(tkinter.Canvas):
 
     def on_key_down_do(self):
         self.is_key_down = True
-        if self.key_code == 'Left' or self.key_code == 'Right':
+        if self.key_code == 'Left' or self.key_code == 'Right'or \
+            self.key_code == 'Down' or self.key_code == 'Up' or \
+            self.key_code == 'space':
             copy_board = copy.deepcopy(self.board)
             self.set_mino(copy_board, self.cur_mino_cords, self.cur_x, self.cur_y, 0)
             next_mino_coords = copy.deepcopy(self.cur_mino_cords)
@@ -163,25 +172,57 @@ class GameBoard(tkinter.Canvas):
                 next_x = self.cur_x - 1
             elif self.key_code == 'Right':
                 next_x = self.cur_x + 1
-            if
+            elif self.key_code == 'Down':
+                for i in range(4):
+                    next_mino_coords[i][0] = -(self.cur_mino_cords[i][1])
+                    next_mino_coords[i][1] = self.cur_mino_cords[i][0]
+            elif self.key_code == 'Up':
+                for i in range(4):
+                    next_mino_coords[i][0] = self.cur_mino_cords[i][1]
+                    next_mino_coords[i][1] = -(self.cur_mino_cords[i][0])
+            elif self.key_code == 'space':
+                while next_y < BoardSize.HEIGHT:
+                    if not self.check_movable(copy_board, self.cur_mino_cords, next_x, next_y + 1):
+                        break
+                    next_y = next_y + 1
+
+
+
+            if self.check_movable(copy_board, next_mino_coords, next_x, next_y):
+                self.draw_mino(copy_board, next_mino_coords, next_x, next_y, self.cur_mino)
+                self.is_cur_mino = True
+        self.is_key_down = False
+        self.key_slip_by = False
 
     def on_timer(self):
+        if self.is_key_down is True:
+            return
         copy_board = copy.deepcopy(self.board)
         if not self.is_cur_mino:
-            new_mino = random.randint(1, 7)
-            new_mino_coords = copy.deepcopy(self.mino_table[new_mino])
-            [new_x, new_y] = [int(BoardSize.WIDTH / 2), 1]
-            if not self.check_movable(copy_board, new_mino_coords, new_x, new_y):
-                self.timer_stop = True
+            del_line_numb = self.check_del_line(copy_board)
+            if del_line_numb < BoardSize.HEIGHT and del_line_numb != 0:
+                del self.board[del_line_numb]
+                self.board.insert(0, [0] * BoardSize.WIDTH)
+                self.paint()
             else:
-                self.draw_mino(copy_board, new_mino_coords, new_x, new_y, new_mino)
-                self.is_cur_mino = True
+                new_mino = random.randint(1, 7)
+                new_mino_coords = copy.deepcopy(self.mino_table[new_mino])
+                [new_x, new_y] = [int(BoardSize.WIDTH / 2), 1]
+                if not self.check_movable(copy_board, new_mino_coords, new_x, new_y):
+                    self.timer_stop = True
+                else:
+                    self.draw_mino(copy_board, new_mino_coords, new_x, new_y, new_mino)
+                    self.is_cur_mino = True
         else:
             self.set_mino(copy_board, self.cur_mino_cords, self.cur_x, self.cur_y, 0)
             if not self.check_movable(copy_board, self.cur_mino_cords, self.cur_x, self.cur_y + 1):
                 self.is_cur_mino = False
             else:
                 self.draw_mino(copy_board, self.cur_mino_cords, self.cur_x, self.cur_y + 1, self.cur_mino)
+            if self.key_slip_by == True:
+                self.on_key_down_do()
+                self.key_slip_by = False
+            self.key_allowed = True
 
     def paint(self):
         """
